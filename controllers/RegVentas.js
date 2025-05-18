@@ -4,141 +4,150 @@ const Producto = require('../models/Producto');
 const Rendicion = require('../models/Rendicion');
 
 async function crearVentaCompleta(req, res) {
+  try {
 
-  const {
-    //datos de cliente
-    nombre,
-    apellido,
-    nombre_fam,
-    apellido_fam,
-    dni,
-    cuil,
-    numero_cliente,
-    situacion_veraz,
-    // === Contacto ===
-    email,
-    numero_telefono,
-    numero_telefono_2,
-    // === Dirección ===
-    direccion_hogar,
-    direccion_comercial,
-    localidad,
+    const {
+      //datos de cliente
+      nombre,
+      apellido,
+      nombre_fam,
+      apellido_fam,
+      dni,
+      cuil,
+      numero_cliente,
+      situacion_veraz,
+      // === Contacto ===
+      email,
+      numero_telefono,
+      numero_telefono_2,
+      // === Dirección ===
+      direccion_hogar,
+      direccion_comercial,
+      localidad,
 
 
 
-    //datos de la venta
-    numeroContrato,
-    fechaRealizada,
-    metodoPago_monto_sus_vta,
-    monto_suscripcion_vta_dir,
-    monto_cuota,
-    cantidad_cuotas,
+      //datos de la venta
+      numeroContrato,
+      fechaRealizada,
+      metodoPago_monto_sus_vta,
+      monto_suscripcion_vta_dir,
+      monto_cuota,
+      cantidad_cuotas,
 
-    //vendedor
-    sup_id,//id del supervisor
-    ve_id,
-    dni_V,
-    nombre_V,
-    apellido_V,
-    //producto
-    nombreProd,
-    tipo,
-    productoId,
-    costeAdmin,
-    //detalle
-    //prestamo
-    montoPrestado,
-    plazo,
-    montoMaximoPorUsuario,//ver si es necesario
-    capitalTotal,//ver si es necesario
-    //venta
-    // banderas
-    ventaDirecta,
-    largoPlazo,
-    entregaInmediata,
-    permutada,
-    cuotasPactadas,//array
+      //vendedor
+      sup_id,//id del supervisor
+      ve_id,
+      dni_V,
+      nombre_V,
+      apellido_V,
+      //producto
+      nombreProd,
+      tipo,
+      productoId,
+      costeAdmin,
+      //detalle
+      //prestamo
+      montoPrestado,
+      plazo,
+      montoMaximoPorUsuario,//ver si es necesario
+      capitalTotal,//ver si es necesario
+      //venta
+      // banderas
+      ventaDirecta,
+      largoPlazo,
+      entregaInmediata,
+      permutada,
+      cuotasPactadas,//array
 
-    //tipo de tarjeta
-    tarjeta_tipo,
+      //tipo de tarjeta
+      tarjeta_tipo,
 
-    //itemInventario
-    nombre_I,
-    modelo,
-    serial,
-    montoEntregaInmediata,
-    objetoRecibido,
-    montoObjetoRecibido,
-    //cuotas se generan en el metodo
-    //cobrador
-    id_c,//ver si es necesario
-    nombre_C,
-    apellido_C,
-    dni_C,
+      //itemInventario
+      nombre_I,
+      modelo,
+      serial,
+      montoEntregaInmediata,
+      objetoRecibido,
+      montoObjetoRecibido,
+      //cuotas se generan en el metodo
+      //cobrador
+      id_c,//ver si es necesario
+      nombre_C,
+      apellido_C,
+      dni_C,
 
-    //para rendicion 
-    nombre_S,
-    apellido_S,
-    dni_S,
+      //para rendicion 
+      nombre_S,
+      apellido_S,
+      dni_S,
 
-    clienteNuevo
+      clienteNuevo
 
-    //la rendicion se genera con los datos ya dados
-    //el actualizar sueldo se genera una vez se acepta la rendicion no cuando se genera
+      //la rendicion se genera con los datos ya dados
+      //el actualizar sueldo se genera una vez se acepta la rendicion no cuando se genera
 
-  } = req.body; // tomamos del body
+    } = req.body; // tomamos del body
 
-  let cliente;
-  let tipoR;
+    let cliente;
+    let tipoR;
 
-  if (clienteNuevo) {
-    cliente = await crearCliente(req.body);
-  } else {
-    cliente = await Cliente.findOne({ dni: dni });
-    if (!cliente) {
-      throw new Error('Cliente no encontrado');
+    if (clienteNuevo) {
+      cliente = await crearCliente(req.body);
+    } else {
+      cliente = await Cliente.findOne({ dni: dni });
+      if (!cliente) {
+        throw new Error('Cliente no encontrado');
+      }
     }
+
+    const venta = await procesarOperacion(req.body, cliente);
+
+    const rendicionExistente = await Rendicion.findOne({
+      $or: [
+        { 'usuario.id': sup_id },
+        { 'usuario.id': ve_id }
+      ],
+      estado: false
+    });
+
+    if (montoPrestado) {
+      tipoR = 'pres';
+    } else if (permutada) {
+      tipoR = 'perm';
+    } else if (ventaDirecta) {
+      tipoR = 'vd';
+    } else if (entregaInmediata) {
+      tipoR = 'ei';
+    } else if (largoPlazo) {
+      tipoR = 'plan';
+    }
+
+    if (rendicionExistente) {
+      // Ya hay rendición pendiente: vamos a actualizarla
+      await actualizarRendicion(rendicionExistente, costeAdmin, nombreProd, tipoR, venta);
+    } else {
+      // No hay rendición pendiente: vamos a crear una nueva
+      await crearNuevaRendicion(ve_id, nombre_S, apellido_S, dni_S, costeAdmin, nombreProd, tipoR, venta);
+    }
+
+    // Opcional: actualizar saldo si es necesario
+    // await actualizarSaldoUsuario(usuarioId, monto, 'sumar');
+
+    res.status(201).json({
+      ok: true,
+      msg: 'venta realizada',
+
+    });
+
+
+  } catch (error) {
+    console.error("Error en crearVentaCompleta:", error);
+    res.status(500).json({
+      success: false,
+      msg: error.message || "Error al procesar la venta"
+    });
   }
-
-  const venta = await procesarOperacion(req.body, cliente);
-
-  const rendicionExistente = await Rendicion.findOne({
-    $or: [
-      { 'usuario.id': sup_id },
-      { 'usuario.id': ve_id }
-    ],
-    estado: false
-  });
-
-  if (montoPrestado) {
-    tipoR = 'pres';
-  } else if (permutada) {
-    tipoR = 'perm';
-  } else if (ventaDirecta) {
-    tipoR = 'vd';
-  } else if (entregaInmediata) {
-    tipoR = 'ei';
-  } else if (largoPlazo) {
-    tipoR = 'plan';
-  }
-
-  if (rendicionExistente) {
-    // Ya hay rendición pendiente: vamos a actualizarla
-    await actualizarRendicion(rendicionExistente, costeAdmin, nombreProd, tipoR, venta);
-  } else {
-    // No hay rendición pendiente: vamos a crear una nueva
-    await crearNuevaRendicion(ve_id, nombre_S, apellido_S, dni_S, costeAdmin, nombreProd, tipoR, venta);
-  }
-
-  // Opcional: actualizar saldo si es necesario
-  // await actualizarSaldoUsuario(usuarioId, monto, 'sumar');
-
-  res.status(201).json({
-    ok: true,
-    msg: 'venta realizada',
-
-  });
-
 
 }
 
@@ -262,6 +271,7 @@ async function procesarPrestamo(datosOperacion, cliente, producto) {
     plazo,
     montoMaximoPorUsuario,//
     capitalTotal,//
+    tarjeta_tipo,
 
     sup_id,//id del supervisor
     dni_V,
@@ -271,7 +281,6 @@ async function procesarPrestamo(datosOperacion, cliente, producto) {
     nombreProd,
     tipo,
 
-    tipo_Tarjeta,
 
     id_c,//ver si es necesario
     nombre_C,
@@ -379,7 +388,7 @@ async function procesarVenta(datosOperacion, cliente, producto) {
   const cobrador = { nombre: nombre_C, apellido: apellido_C, dni: dni_C }
 
   // 1. Validación básica para asegurarnos de que todo esté presente
-  if (!numeroContrato || !monto_suscripcion_vta_dir) {
+  if (!numeroContrato || !monto_suscripcion_vta_dir || !metodoPago_monto_sus_vta) {
     throw new Error("Faltan datos esenciales para procesar la venta.");
   }
 

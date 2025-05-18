@@ -164,7 +164,7 @@ const verificarNotificacionesNavbar = async (req, res) => {
           debugInfo.push(`Venta ${venta._id}: Tiene cuotas pactadas pagadas`);
         } else if (pactadas.length > 0) {
           // También considerar si hay pactadas pero ninguna pagada aún
-          hayCuotasPactadas = true;
+          hayCuotasPactadas = false;
           debugInfo.push(`Venta ${venta._id}: Tiene cuotas pactadas (0 pagadas)`);
         }
       }
@@ -181,7 +181,7 @@ const verificarNotificacionesNavbar = async (req, res) => {
     } else {
       codigo = 0;
     }
-
+ 
   
 
    // Actualizamos el cache
