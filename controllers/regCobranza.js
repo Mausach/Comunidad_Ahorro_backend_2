@@ -191,6 +191,111 @@ const procesarCobranzaCuota = async (req, res) => {
     }
 };
 
+// Editar monto de cuota sin cambiar su estado
+const editarMontoCuota = async (req, res) => {
+    const { 
+        ventaId, 
+        cuotaId, 
+        montoCuota, 
+        comentario,
+        cobrador 
+    } = req.body;
+
+    try {
+        // 1. Validación básica del monto
+        if (!montoCuota || isNaN(montoCuota) || parseFloat(montoCuota) <= 0) {
+            return res.status(400).json({ 
+                ok: false, 
+                msg: 'El monto debe ser un número mayor a cero' 
+            });
+        }
+
+        // 2. Buscar venta y cuota
+        const venta = await Venta.findOne({
+            _id: ventaId,
+            'cuotas._id': cuotaId
+        }).select('cuotas cliente producto estado numeroContrato');
+
+        if (!venta) {
+            return res.status(404).json({ 
+                ok: false, 
+                msg: "Venta no encontrada" 
+            });
+        }
+
+        const cuota = venta.cuotas.id(cuotaId);
+        if (!cuota) {
+            return res.status(404).json({ 
+                ok: false, 
+                msg: "Cuota no encontrada" 
+            });
+        }
+
+        // 3. Registrar el cambio en el historial (opcional)
+        const historialCambio = {
+            fecha: new Date(),
+            montoAnterior: cuota.montoCuota,
+            montoNuevo: parseFloat(montoCuota),
+            modificadoPor: {
+                _id: cobrador._id,
+                nombre: cobrador.nombre,
+                apellido: cobrador.apellido
+            },
+            comentario: comentario || "Monto de cuota modificado"
+        };
+
+        // 4. Actualizar la cuota
+        cuota.montoCuota = parseFloat(montoCuota);
+        cuota.cobrador = {
+            _id: cobrador._id,
+            dni: cobrador.dni,
+            nombre: cobrador.nombre,
+            apellido: cobrador.apellido
+        };
+
+        // Agregar al historial si tienes este campo
+        if (!cuota.historialCambios) {
+            cuota.historialCambios = [];
+        }
+        cuota.historialCambios.push(historialCambio);
+
+        // 5. Recalcular totales de la venta si es necesario
+        if (venta.estado === 'activa' || venta.estado === 'pendiente') {
+            venta.totalPagado = venta.cuotas.reduce((sum, c) => 
+                c.estado_cuota === 'pago' ? sum + c.montoCuota : sum, 0);
+            venta.saldoPendiente = venta.totalVenta - venta.totalPagado;
+        }
+
+        // 6. Guardar cambios
+        await venta.save();
+
+        // 7. Respuesta exitosa
+        res.json({
+            ok: true,
+            msg: 'Monto de cuota actualizado correctamente',
+            venta: {
+                _id: venta._id,
+                estado: venta.estado,
+                numeroContrato: venta.numeroContrato
+            },
+            cuota: {
+                numeroCuota: cuota.numeroCuota,
+                montoAnterior: historialCambio.montoAnterior,
+                montoActual: cuota.montoCuota,
+                estado: cuota.estado_cuota
+            },
+            historial: historialCambio
+        });
+
+    } catch (error) {
+        console.error('Error en editarMontoCuota:', error);
+        res.status(500).json({
+            ok: false,
+            msg: error.message || 'Error interno al actualizar el monto'
+        });
+    }
+};
+
 // Funciones auxiliares (privadas)
 const procesarPagoCompleto = (cuota, { metodoPago }) => {
     if (!metodoPago) throw new Error('Método de pago es requerido');
@@ -370,5 +475,6 @@ const getCuotasHoyPorDNI = async (req, res) => {
 module.exports = {
     cargarVentas,
     procesarCobranzaCuota,
-    getCuotasHoyPorDNI
+    getCuotasHoyPorDNI,
+    editarMontoCuota
   };

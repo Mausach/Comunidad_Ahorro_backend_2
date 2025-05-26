@@ -4,7 +4,7 @@ const express = require('express');
 const { check } = require('express-validator');
 const { validarCampos } = require('../midelwares/validarCampos');
 const { validarJWTRolesCreadorGerente } = require('../midelwares/validarJWTCreadorGerente');
-const { crearProducto, cargarProductos, actualizarProducto, agregarMultiplesItems, eliminarItemPorSerial, editarItemPorSerial } = require('../controllers/product');
+const { crearProducto, cargarProductos, actualizarProducto, agregarMultiplesItems, eliminarItemPorSerial, editarItemPorSerial, cambiarEstadoProducto } = require('../controllers/product');
 const { validarJWTRolesSuperiores } = require('../midelwares/ValidarJWTSuperiores');
 //const { crearUsuario, actualizarUsuario, cargarUsuarios, CambiarEstadoUsuario, crearEquipo, quitarDeEquipo, asignarAEquipo, rendirSaldo } = require('../controllers/admin');
 
@@ -52,11 +52,18 @@ routerProduct.put(
   agregarMultiplesItems
 );
 
-//agregar a stock
+//editar a stock
 routerProduct.put(
   '/edit_item-stock',
   validarJWTRolesCreadorGerente,
   editarItemPorSerial
+);
+
+//cambiar estado
+routerProduct.put(
+  '/cambiar-estado',
+  validarJWTRolesCreadorGerente,
+  cambiarEstadoProducto
 );
 
 //quitar un item de stock

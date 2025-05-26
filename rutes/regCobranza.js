@@ -5,7 +5,7 @@ const { validarCampos } = require('../midelwares/validarCampos');
 
 
 const { validarJWTCobranza } = require('../midelwares/validarJWTCobranza');
-const { cargarVentas, procesarCobranzaCuota, getCuotasHoyPorDNI } = require('../controllers/regCobranza');
+const { cargarVentas, procesarCobranzaCuota, getCuotasHoyPorDNI, editarMontoCuota } = require('../controllers/regCobranza');
 
 
 const routerCobros = express.Router();
@@ -24,6 +24,8 @@ routerCobros.post('/new-venta',validarJWTCobranza,
     crearVentaCompleta
 );
 */
+
+routerCobros.put('/cuotas/editar-monto',validarJWTCobranza, editarMontoCuota);
 
 //
 routerCobros.get('/cuotas-hoy/:dni', getCuotasHoyPorDNI);

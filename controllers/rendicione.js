@@ -175,7 +175,7 @@ const aceptarRendicionCobranza = async (req, res) => {
     }
 
     // 3. Calcular el 1% del monto a rendir
-    const porcentajeComision = 0.01;
+    const porcentajeComision = 0.04;
     const comision = rendicion.montoARendir * porcentajeComision;
 
     // 4. Actualizar el saldo del usuario

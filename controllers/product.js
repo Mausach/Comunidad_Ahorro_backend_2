@@ -215,6 +215,7 @@ const actualizarProducto = async (req, res) => {
 
 //cambiar estadod e producto
 const cambiarEstadoProducto = async (req, res) => {
+     const {_id} = req.body;
     try {
         // 1. Buscar producto por ID
         const producto = await Producto.findById(_id);

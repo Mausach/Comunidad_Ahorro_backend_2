@@ -43,6 +43,9 @@ app.use("/cobro",require('./rutes/regCobranza'))
 //para las notificaciones
 app.use("/notifi",require('./rutes/noti'))
 
+//para las notificaciones
+app.use("/inventario",require('./rutes/inventario'))
+
 //app.listen(process.env.PORT),()=>{
   //  console.log('server corriendo en puerto 4k');
 //};
