@@ -2,6 +2,7 @@ const Venta = require('../models/Venta');
 const Cliente = require('../models/Cliente'); // Ajusta la ruta si es diferente
 const Producto = require('../models/Producto');
 const Rendicion = require('../models/Rendicion');
+const Inventario = require('../models/Inventario');
 
 async function crearVentaCompleta(req, res) {
   try {
@@ -32,6 +33,10 @@ async function crearVentaCompleta(req, res) {
       fechaRealizada,
       metodoPago_monto_sus_vta,
       monto_suscripcion_vta_dir,
+      metodoPago_2, // Segundo método (opcional)
+      monto_2, // Segundo monto (opcional)
+      metodoPago_3, // Tercer método (opcional)
+      monto_3, // Tercer monto (opcional)
       monto_cuota,
       cantidad_cuotas,
 
@@ -45,6 +50,7 @@ async function crearVentaCompleta(req, res) {
       nombreProd,
       tipo,
       productoId,
+      productoVenta,
       costeAdmin,
       //detalle
       //prestamo
@@ -240,21 +246,18 @@ const crearCliente = async (datosCliente) => {
 }
 
 async function procesarOperacion(datosOperacion, cliente) {
-
-  const {
-
-    tipo,
-    productoId
-  } = datosOperacion;
-
-  const producto = await Producto.findById(productoId);
+  const { tipo, productoId, productoVenta } = datosOperacion;
 
   if (tipo === 'prestamo') {
+    // Para préstamos, seguimos buscando el producto en la DB
+    const producto = await Producto.findById(productoId);
     return await procesarPrestamo(datosOperacion, cliente, producto);
   } else if (tipo === 'sistema_venta') {
-    return await procesarVenta(datosOperacion, cliente, producto);
+    // Para ventas, usamos el producto que ya viene en el body (productoVenta)
+
+    return await procesarVenta(datosOperacion, cliente);
   } else {
-    throw new Error('Tipo de producto desconocido.');
+    throw new Error('Tipo de operación desconocido.');
   }
 }
 /**************************** Prestamo ****************************************** */
@@ -365,49 +368,72 @@ async function procesarPrestamo(datosOperacion, cliente, producto) {
 }
 
 /********************************* venta ********************************************** */
-async function procesarVenta(datosOperacion, cliente, producto) {
-  const {
 
-    // Datos venta
-    numeroContrato, fechaRealizada, metodoPago_monto_sus_vta, monto_suscripcion_vta_dir,
+async function procesarVenta(datosOperacion, cliente) {
+  const {
+    // Datos generales
+    numeroContrato,
+    fechaRealizada,
+    // Montos y métodos de pago (hasta 3 por venta)
+    metodoPago_monto_sus_vta, // Método principal
+    monto_suscripcion_vta_dir, // Monto principal
+    metodoPago_2, // Segundo método (opcional)
+    monto_2, // Segundo monto (opcional)
+    metodoPago_3, // Tercer método (opcional)
+    monto_3, // Tercer monto (opcional)
     monto_cuota, cantidad_cuotas, tarjeta_tipo,
     // Vendedor
     sup_id, dni_V, nombre_V, apellido_V,
     // Producto
     nombreProd, tipo, productoId,
-    // Venta detalles
+    // Detalles de venta (banderas)
     ventaDirecta, largoPlazo, entregaInmediata, permutada, plazo,
-    // Item inventario (si aplica)
+    // Item de inventario (si aplica)
     nombre_I, modelo, serial, montoEntregaInmediata, metodoPago_EntregaInm, objetoRecibido, montoObjetoRecibido,
     // Cuotas pactadas
-    cuotasPactadas,
+    pactadas,
     // Cobrador
     id_c, nombre_C, apellido_C, dni_C
   } = datosOperacion;
 
-  const cobrador = { nombre: nombre_C, apellido: apellido_C, dni: dni_C }
-
-  // 1. Validación básica para asegurarnos de que todo esté presente
-  if (!numeroContrato || !monto_suscripcion_vta_dir || !metodoPago_monto_sus_vta) {
-    throw new Error("Faltan datos esenciales para procesar la venta.");
+  // =================================================================
+  // **1. VALIDACIONES INICIALES**
+  // =================================================================
+  if (!numeroContrato) {
+    throw new Error("El número de contrato es obligatorio para todas las ventas.");
   }
 
 
-  // Base de la venta (común para todos)
+
+  // Si hay monto_2 o monto_3, deben tener su método correspondiente
+  if ((monto_2 && !metodoPago_2) || (!monto_2 && metodoPago_2)) {
+    throw new Error("Si se especifica un segundo monto, debe tener un metodo de Pago asociado.");
+  }
+  if ((monto_3 && !metodoPago_3) || (!monto_3 && metodoPago_3)) {
+    throw new Error("Si se especifica un tercer monto, debe tener un metodo de Pago asociado.");
+  }
+
+  // =================================================================
+  // **2. CONSTRUCCIÓN DEL OBJETO VENTA (BASE)**
+  // =================================================================
   const venta = {
     numeroContrato,
     fechaRealizada,
-    metodoPago_monto_sus_vta,//suscripcion o venta
-    monto_suscripcion_vta_dir,//metodo de sus o vnta dir
+    metodoPago_monto_sus_vta,
+    monto_suscripcion_vta_dir,
+    metodoPago_2: monto_2 ? metodoPago_2 : undefined, // Solo se guarda si existe
+    monto_2: monto_2 || undefined,
+    metodoPago_3: monto_3 ? metodoPago_3 : undefined,
+    monto_3: monto_3 || undefined,
     vendedor: {
-      sup_id: sup_id,
+      sup_id,
       dni: dni_V,
       nombre: nombre_V,
       apellido: apellido_V
     },
     producto: {
       nombre: nombreProd,
-      tipo: tipo,
+      tipo,
       detalle: {
         venta: {
           banderas: {
@@ -416,11 +442,11 @@ async function procesarVenta(datosOperacion, cliente, producto) {
             entregaInmediata,
             permutada
           },
-          cuotasPactadas: producto.detalles.venta.plazosPactados,
+          cuotasPactadas: pactadas,
           itemInventario: {
-            nombre: nombre_I,//cuando es plan solo se asigna el nombre no el resto de datos
-            modelo: modelo,
-            serial: serial
+            nombre: nombre_I,
+            modelo,
+            serial
           },
           montoEntregaInmediata,
           metodoPago_EntregaInm,
@@ -429,11 +455,6 @@ async function procesarVenta(datosOperacion, cliente, producto) {
         }
       }
     },
-
-    conducta_o_instancia: 'al dia',
-    estado: true,
-    cuotas: [],
-
     cliente: {
       nombre: cliente.nombre,
       apellido: cliente.apellido,
@@ -445,26 +466,41 @@ async function procesarVenta(datosOperacion, cliente, producto) {
       direccion_2: cliente.direccion_comercial,
       nombre_fam: cliente.nombre_fam,
       apellido_fam: cliente.apellido_fam,
-
     },
-
-    detalleVenta: {}
+    conducta_o_instancia: 'al dia',
+    estado: true,
+    cuotas: []
   };
 
-
-
-  // Ahora, según la bandera
+  // =================================================================
+  // **3. LÓGICA POR TIPO DE VENTA**
+  // =================================================================
   if (ventaDirecta) {
-    // Solo monto total igual a venta directa
-    //hacer el control del item
-    actualizarEstadoItemInventario(serial, producto)
 
-    // Actualizar item inventario a 'vendido'
-  }
-  else if (entregaInmediata) {
+    // Validación de montos y métodos (al menos el principal debe estar)
+    if (!monto_suscripcion_vta_dir || !metodoPago_monto_sus_vta) {
+      throw new Error("El monto principal y su método de pago son obligatorios.");
+    }
+    // Validación adicional para venta directa (si aplica)
+    if (!nombre_I || !serial) {
+      throw new Error("Venta directa requiere item de inventario (nombre y serial).");
+    }
+    await actualizarEstadoItemInventario2(serial); // Marcamos como "vendido"
+
+  } else if (entregaInmediata) {
+    // Validación para entrega inmediata
+    // Validación de montos y métodos (al menos el principal debe estar)
+    if (!monto_suscripcion_vta_dir || !metodoPago_monto_sus_vta) {
+      throw new Error("El monto principal y su método de pago son obligatorios.");
+    }
+
+    // Validación adicional para venta directa (si aplica)
+    if (!nombre_I || !serial) {
+      throw new Error("Venta directa requiere item de inventario (nombre y serial).");
+    }
 
 
-    venta.cuotas = generarCuotas({ //para prestamo manualmente pagar la primera como paga 
+    venta.cuotas = generarCuotas({
       montoCuota: monto_cuota,
       cantidadCuotas: cantidad_cuotas,
       cobrador: { nombre: nombre_C, apellido: apellido_C, dni: dni_C },
@@ -472,24 +508,33 @@ async function procesarVenta(datosOperacion, cliente, producto) {
       plazo
     });
 
-    actualizarEstadoItemInventario(serial, producto)
 
-  }
-  else if (largoPlazo) {
 
-    venta.cuotas = generarCuotas({ //para prestamo manualmente pagar la primera como paga 
+    await actualizarEstadoItemInventario2(serial);
+
+  } else if (largoPlazo) {
+    if (!monto_suscripcion_vta_dir || !metodoPago_monto_sus_vta) {
+      throw new Error("El monto principal y su método de pago son obligatorios.");
+    }
+    // Validación para largo plazo
+    if (!cantidad_cuotas || !monto_cuota) {
+      throw new Error("Largo plazo requiere cantidad de cuotas y monto por cuota.");
+    }
+    venta.cuotas = generarCuotas({
       montoCuota: monto_cuota,
       cantidadCuotas: cantidad_cuotas,
       cobrador: { nombre: nombre_C, apellido: apellido_C, dni: dni_C },
       fechaInicio: fechaRealizada,
       plazo
     });
-    // No actualizar inventario
-  }
-  else if (permutada) {
 
+  } else if (permutada) {
+    // Permutada: validación opcional de cuotas
+    if (cantidad_cuotas && !monto_cuota) {
+      throw new Error("Si hay cuotas en permuta, el monto por cuota es obligatorio.");
+    }
     if (cantidad_cuotas && monto_cuota) {
-      venta.cuotas = generarCuotas({ //para prestamo manualmente pagar la primera como paga 
+      venta.cuotas = generarCuotas({
         montoCuota: monto_cuota,
         cantidadCuotas: cantidad_cuotas,
         cobrador: { nombre: nombre_C, apellido: apellido_C, dni: dni_C },
@@ -497,17 +542,16 @@ async function procesarVenta(datosOperacion, cliente, producto) {
         plazo
       });
     }
+    await actualizarEstadoItemInventario2(serial);
 
-    actualizarEstadoItemInventario(serial, producto)
-    // Actualizar item inventario a 'vendido'
-  }
-  else {
+  } else {
     throw new Error("Tipo de venta no reconocido.");
   }
 
-  // Guardar la venta
+  // =================================================================
+  // **4. GUARDAR LA VENTA EN LA BASE DE DATOS**
+  // =================================================================
   const ventaGuardada = await Venta.create(venta);
-
   return ventaGuardada;
 }
 
@@ -528,6 +572,29 @@ async function actualizarEstadoItemInventario(serial, producto) {
   await producto.save();
 
   return item; // Devolvemos el item actualizado
+}
+
+async function actualizarEstadoItemInventario2(serial) {
+  // Buscar el item en el Inventario general (no en Producto)
+  const item = await Inventario.findOne({ numero_serie: serial });
+
+  if (!item) {
+    throw new Error('Item no encontrado en el inventario general.');
+  }
+
+  // Validar que el item esté disponible para vender
+  if (item.estado !== 'disponible') {
+    throw new Error(`El item no está disponible (estado actual: ${item.estado}).`);
+  }
+
+  // Actualizar el estado a "vendido" (o puedes usar otro estado como "asignado" si prefieres)
+  item.estado = 'vendido'; // O 'asignado' si es más adecuado
+  //item.asignado_a = cliente._id; // Si necesitas registrar a quién se vendió
+
+  // Guardar cambios en el Inventario
+  await item.save();
+
+  return item; // Devolver el item actualizado
 }
 
 /*************************** Cuotas ***************************************** */
@@ -761,6 +828,15 @@ const cargarSistemaVentas = async (req, res) => {
           ...v.producto.detalle.venta.itemInventario,
           fechaEntrega: formatFechaArg(v.producto.detalle.venta.itemInventario.fechaEntrega)
         };
+      }
+
+      // Formatear fechas de cuotas
+      if (v.cuotas && Array.isArray(v.cuotas)) {
+        vFormateada.cuotas = v.cuotas.map(cuota => ({
+          ...cuota,
+          fechaCobro: formatFechaArg(cuota.fechaCobro),
+          fechaCobrada: formatFechaArg(cuota.fechaCobrada)
+        }));
       }
 
       // Campos monetarios

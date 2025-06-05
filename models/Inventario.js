@@ -72,7 +72,7 @@ const inventarioSchema = new Schema({
     estado: {
         type: String,
         required: true,
-        enum: ['disponible', 'asignado', 'en_reparacion', 'perdido', 'baja'],
+        enum: ['disponible', 'asignado', 'en_reparacion', 'perdido', 'baja','vendido'],
         default: 'disponible'
     },
 

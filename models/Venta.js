@@ -25,6 +25,26 @@ const ventaSchema = new Schema({
         min: 0
     },
 
+    metodoPago_2: {// metodo de pago de el monto de suscripcion o venta directa segun corresponda 2
+        type: String,
+      
+    },
+
+    monto_2: {//generalizamos en el objeto el monto de suscripcion o sera monto de venta directa o de venta permutada 2
+        type: Number,
+      
+    },
+
+    metodoPago_3: {// metodo de pago de el monto de suscripcion o venta directa segun corresponda 3
+        type: String,
+       
+    },
+
+    monto_3: {//generalizamos en el objeto el monto de suscripcion o sera monto de venta directa o de venta permutada 3
+        type: Number,
+    
+    },
+
 
     vendedor: {
 
@@ -77,7 +97,7 @@ const ventaSchema = new Schema({
             //-(cuando paga algo o se atrasa pero si paga)-(cuando no quiere pagar)(es base comoa rrancan todas las cuotas)
             enum: ["pago", "pendiente", "no pagado", "impago"]
         },
-         
+
         fechaCobrada: Date,
         cobrador: {
             id: { type: Schema.Types.ObjectId, ref: "Usuario" },
