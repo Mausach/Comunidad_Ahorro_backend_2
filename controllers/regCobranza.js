@@ -326,13 +326,14 @@ const procesarNoPago = (cuota, { comentario }) => {
     cuota.comentario = comentario;
 };
 
+//arreglar para que de el cancelado
 const actualizarEstadoVenta = (venta) => {
     const cuotasNoPagadas = venta.cuotas.filter(c => 
         ['no pagado'].includes(c.estado_cuota)
     ).length;
 
     if (venta.cuotas.every(c => c.estado_cuota === 'pago')) {
-        venta.conducta_o_instancia = 'al dia';
+        venta.conducta_o_instancia = 'canselado';
         venta.estado = false;
     } else if (cuotasNoPagadas >= 4) {
         venta.conducta_o_instancia = 'caducado';

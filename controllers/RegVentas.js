@@ -245,6 +245,109 @@ const crearCliente = async (datosCliente) => {
   }
 }
 
+const crearCliente2 = async (req, res) => {
+  const {
+    nombre,
+    apellido,
+    nombre_fam,
+    apellido_fam,
+    dni,
+    cuil,
+    situacion_veraz,
+    email,
+    numero_telefono,
+    numero_telefono_2,
+    direccion_hogar,
+    direccion_comercial,
+    localidad,
+  } = req.body;
+
+  try {
+    // Verificar campos obligatorios
+    if (
+      !nombre ||
+      !apellido ||
+      !nombre_fam ||
+      !apellido_fam ||
+      !dni ||
+      !direccion_hogar ||
+      !numero_telefono
+    ) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Por favor, complete todos los campos obligatorios.'
+      });
+    }
+
+    // Validar email solo si viene
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El formato del email no es válido.'
+      });
+    }
+
+    // Validar situación veraz si viene
+    if (situacion_veraz !== undefined) {
+      const situacionVerazParsed = parseInt(situacion_veraz, 10);
+      if (isNaN(situacionVerazParsed) || situacionVerazParsed < 1 || situacionVerazParsed > 6) {
+        return res.status(400).json({
+          ok: false,
+          message: 'La situación veraz debe estar entre 1 y 6.'
+        });
+      }
+    }
+
+    const cantidadClientes = await Cliente.countDocuments();
+    const numero_cliente = (cantidadClientes + 1).toString().padStart(5, '0');
+
+    // Creamos el nuevo cliente
+    const nuevoCliente = new Cliente({
+      nombre,
+      apellido,
+      nombre_fam,
+      apellido_fam,
+      dni,
+      cuil: cuil || undefined,
+      numero_cliente,
+      situacion_veraz: situacion_veraz || null,
+      email: email || undefined,
+      numero_telefono,
+      numero_telefono_2: numero_telefono_2 || null,
+      direccion_hogar,
+      direccion_comercial: direccion_comercial || null,
+      localidad
+    });
+
+    // Guardamos el cliente en la base de datos
+    await nuevoCliente.save();
+
+    return res.status(201).json({
+      ok: true,
+      message: 'Cliente creado exitosamente',
+      data: nuevoCliente // Opcional: si quieres devolver los datos creados
+    });
+
+  } catch (error) {
+    console.error('Error al crear cliente:', error);
+
+    // Si el error es de clave duplicada
+    if (error.code === 11000) {
+      const campoDuplicado = Object.keys(error.keyValue)[0];
+      return res.status(409).json({
+        ok: false,
+        message: `Ya existe un cliente con el mismo ${campoDuplicado}.`
+      });
+    } else {
+      return res.status(500).json({
+        ok: false,
+        message: `Error al crear cliente: ${error.message}`
+      });
+    }
+  }
+};
+
+
 async function procesarOperacion(datosOperacion, cliente) {
   const { tipo, productoId, productoVenta } = datosOperacion;
 
@@ -554,6 +657,506 @@ async function procesarVenta(datosOperacion, cliente) {
   const ventaGuardada = await Venta.create(venta);
   return ventaGuardada;
 }
+
+const procesarVenta2 = async (req, res) => {
+  try {
+  
+
+    // Extraemos TODOS los campos del body
+    const {
+      // Datos generales
+      numeroContrato,
+      fechaRealizada,
+      // Montos y métodos de pago
+      metodoPago_monto_sus_vta,
+      monto_suscripcion_vta_dir,
+      metodoPago_2,
+      monto_2,
+      metodoPago_3,
+      monto_3,
+      monto_cuota,
+      cantidad_cuotas,
+      tarjeta_tipo,
+      // Vendedor
+      sup_id,
+      dni_V,
+      nombre_V,
+      apellido_V,
+      // Producto
+      nombreProd,
+      tipo,
+      productoId,
+      // Detalles de venta (banderas)
+      ventaDirecta,
+      largoPlazo,
+      entregaInmediata,
+      permutada,
+      plazo,
+      // Item de inventario
+      nombre_I,
+      modelo,
+      serial,
+      montoEntregaInmediata,
+      metodoPago_EntregaInm,
+      objetoRecibido,
+      montoObjetoRecibido,
+      // Cuotas pactadas
+      pactadas,
+      // Cobrador
+      id_c,
+      nombre_C,
+      apellido_C,
+      dni_C,
+      // ✅ AHORA los datos del cliente vienen en el primer nivel
+      nombre, apellido, nombre_fam, apellido_fam, dni, numero_telefono,
+      email, direccion_hogar, direccion_comercial, localidad, cuil, situacion_veraz,
+      clienteNuevo, costeAdmin, tipoVenta
+    } = req.body;
+
+    // =================================================================
+    // **1. VALIDACIONES INICIALES** (modificadas)
+    // =================================================================
+    if (!numeroContrato) {
+      return res.status(400).json({
+        success: false,
+        message: "El número de contrato es obligatorio para todas las ventas."
+      });
+    }
+
+    // Validar que los datos básicos del cliente estén presentes
+    if (!dni || !nombre || !apellido) {
+      return res.status(400).json({
+        success: false,
+        message: "Los datos básicos del cliente (nombre, apellido, dni) son obligatorios."
+      });
+    }
+
+    // Si hay monto_2 o monto_3, deben tener su método correspondiente
+    if ((monto_2 && !metodoPago_2) || (!monto_2 && metodoPago_2)) {
+      return res.status(400).json({
+        success: false,
+        message: "Si se especifica un segundo monto, debe tener un método de pago asociado."
+      });
+    }
+
+    if ((monto_3 && !metodoPago_3) || (!monto_3 && metodoPago_3)) {
+      return res.status(400).json({
+        success: false,
+        message: "Si se especifica un tercer monto, debe tener un método de pago asociado."
+      });
+    }
+
+    // =================================================================
+    // **2. CONSTRUCCIÓN DEL OBJETO VENTA** (modificada)
+    // =================================================================
+    const venta = {
+      numeroContrato,
+      fechaRealizada: fechaRealizada || new Date(),
+      metodoPago_monto_sus_vta,
+      monto_suscripcion_vta_dir,
+      metodoPago_2: monto_2 ? metodoPago_2 : undefined,
+      monto_2: monto_2 || undefined,
+      metodoPago_3: monto_3 ? metodoPago_3 : undefined,
+      monto_3: monto_3 || undefined,
+      vendedor: {
+        sup_id: sup_id || req.usuario?._id, // Usar el usuario autenticado si no viene
+        dni: dni_V || req.usuario?.dni,
+        nombre: nombre_V || req.usuario?.nombre,
+        apellido: apellido_V || req.usuario?.apellido
+      },
+      producto: {
+        nombre: nombreProd,
+        tipo: tipo || "sistema_venta",
+        detalle: {
+          venta: {
+            banderas: {
+              ventaDirecta: ventaDirecta || false,
+              largoPlazo: largoPlazo || false,
+              entregaInmediata: entregaInmediata || false,
+              permutada: permutada || false
+            },
+            cuotasPactadas: pactadas || [],
+            itemInventario: {
+              nombre: nombre_I,
+              modelo: modelo,
+              serial: serial
+            },
+            montoEntregaInmediata: montoEntregaInmediata || 0,
+            metodoPago_EntregaInm: metodoPago_EntregaInm || '',
+            objetoRecibido: objetoRecibido || '',
+            montoObjetoRecibido: montoObjetoRecibido || 0
+          }
+        }
+      },
+      // ✅ AHORA construimos el objeto cliente desde los campos del primer nivel
+      cliente: {
+        nombre: nombre,
+        apellido: apellido,
+        dni: dni,
+        telefono: numero_telefono,
+        tipo_Tarjeta: tarjeta_tipo,
+        email: email || '',
+        direccion: direccion_hogar,
+        direccion_2: direccion_comercial || '',
+        nombre_fam: nombre_fam || '',
+        apellido_fam: apellido_fam || '',
+        localidad: localidad || '',
+        cuil: cuil || '',
+        situacion_veraz: situacion_veraz || 0
+      },
+      conducta_o_instancia: 'al dia',
+      estado: true,
+      cuotas: []
+    };
+
+    // =================================================================
+    // **3. LÓGICA POR TIPO DE VENTA** (igual)
+    // =================================================================
+    if (ventaDirecta) {
+      if (!monto_suscripcion_vta_dir || !metodoPago_monto_sus_vta) {
+        return res.status(400).json({
+          success: false,
+          message: "El monto principal y su método de pago son obligatorios."
+        });
+      }
+
+      if (!nombre_I || !serial) {
+        return res.status(400).json({
+          success: false,
+          message: "Venta directa requiere item de inventario (nombre y serial)."
+        });
+      }
+
+      await actualizarEstadoItemInventario2(serial);
+
+    } else if (entregaInmediata) {
+      if (!monto_suscripcion_vta_dir || !metodoPago_monto_sus_vta) {
+        return res.status(400).json({
+          success: false,
+          message: "El monto principal y su método de pago son obligatorios."
+        });
+      }
+
+      if (!nombre_I || !serial) {
+        return res.status(400).json({
+          success: false,
+          message: "Entrega inmediata requiere item de inventario (nombre y serial)."
+        });
+      }
+
+      venta.cuotas = generarCuotas({
+        montoCuota: monto_cuota,
+        cantidadCuotas: cantidad_cuotas,
+        cobrador: { 
+          nombre: nombre_C || '', 
+          apellido: apellido_C || '', 
+          dni: dni_C || '' 
+        },
+        fechaInicio: fechaRealizada || new Date(),
+        plazo: plazo || 'mensual'
+      });
+
+      await actualizarEstadoItemInventario2(serial);
+
+    } else if (largoPlazo) {
+      if (!monto_suscripcion_vta_dir || !metodoPago_monto_sus_vta) {
+        return res.status(400).json({
+          success: false,
+          message: "El monto principal y su método de pago son obligatorios."
+        });
+      }
+
+      if (!cantidad_cuotas || !monto_cuota) {
+        return res.status(400).json({
+          success: false,
+          message: "Largo plazo requiere cantidad de cuotas y monto por cuota."
+        });
+      }
+
+      venta.cuotas = generarCuotas({
+        montoCuota: monto_cuota,
+        cantidadCuotas: cantidad_cuotas,
+        cobrador: { 
+          nombre: nombre_C || '', 
+          apellido: apellido_C || '', 
+          dni: dni_C || '' 
+        },
+        fechaInicio: fechaRealizada || new Date(),
+        plazo: plazo || 'mensual'
+      });
+
+    } else if (permutada) {
+      if (cantidad_cuotas && !monto_cuota) {
+        return res.status(400).json({
+          success: false,
+          message: "Si hay cuotas en permuta, el monto por cuota es obligatorio."
+        });
+      }
+
+      if (cantidad_cuotas && monto_cuota) {
+        venta.cuotas = generarCuotas({
+          montoCuota: monto_cuota,
+          cantidadCuotas: cantidad_cuotas,
+          cobrador: { 
+            nombre: nombre_C || '', 
+            apellido: apellido_C || '', 
+            dni: dni_C || '' 
+          },
+          fechaInicio: fechaRealizada || new Date(),
+          plazo: plazo || 'mensual'
+        });
+      }
+
+      if (serial) {
+        await actualizarEstadoItemInventario2(serial);
+      }
+
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Tipo de venta no reconocido."
+      });
+    }
+
+    // =================================================================
+    // **4. GUARDAR LA VENTA EN LA BASE DE DATOS**
+    // =================================================================
+    const ventaGuardada = await Venta.create(venta);
+
+    return res.status(201).json({
+      success: true,
+      message: "Venta procesada exitosamente",
+      data: ventaGuardada
+    });
+
+  } catch (error) {
+    console.error('Error al procesar venta:', error);
+
+    // Manejar errores de duplicados
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Ya existe una venta con el mismo número de contrato."
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: `Error al procesar venta: ${error.message}`
+    });
+  }
+};
+
+//para actualizar venta desde gestion de cobranza
+//para actualizar venta desde gestion de cobranza
+//falta validacion de los datos que viene importantes como el num contrato
+//verificar que el metodo pago no sea vacio
+//PARA PRODUCTO VERIFICAR QUE LOS DATOS NO ESTEN VACIOS
+//PATRA CUOTAS PERMITE 2 CUOTAS CON EL MISMO NUMERO
+//PARA CLIENTE ME DEJA GUARDAR SIN NOMBRE CRERIA QUE SIN APELLIDO 
+const actualizarVenta = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const datosActualizados = { ...req.body };
+
+        // =================================================================
+        // **VALIDACIONES INICIALES**
+        // =================================================================
+        
+        // 1. Validar que el ID existe
+        if (!id) {
+            return res.status(400).json({ error: 'ID de venta es requerido' });
+        }
+
+        // 2. Validar que hay datos para actualizar
+        if (Object.keys(datosActualizados).length === 0) {
+            return res.status(400).json({ error: 'No hay datos para actualizar' });
+        }
+
+        // 3. Validar que numeroContrato viene (si se está actualizando)
+        if (datosActualizados.numeroContrato !== undefined) {
+            if (!datosActualizados.numeroContrato || datosActualizados.numeroContrato.trim() === '') {
+                return res.status(400).json({ error: 'numeroContrato no puede estar vacío' });
+            }
+
+            // 4. Validar que numeroContrato no existe en otra venta
+            const ventaExistente = await Venta.findOne({ 
+                numeroContrato: datosActualizados.numeroContrato,
+                _id: { $ne: id } // Excluir la venta actual
+            });
+
+            if (ventaExistente) {
+                return res.status(400).json({ 
+                    error: 'El número de contrato ya existe en otra venta' 
+                });
+            }
+        }
+
+        // 5. Validar metodoPago_monto_sus_vta (si se está actualizando)
+        if (datosActualizados.metodoPago_monto_sus_vta !== undefined && 
+            (!datosActualizados.metodoPago_monto_sus_vta || datosActualizados.metodoPago_monto_sus_vta.trim() === '')) {
+            return res.status(400).json({ error: 'metodo de Pago no puede estar vacío' });
+        }
+
+        // =================================================================
+        // **VALIDACIONES DE PRODUCTO**
+        // =================================================================
+        if (datosActualizados.producto) {
+            const { producto } = datosActualizados;
+
+            // Validar nombre del producto
+            if (producto.nombre !== undefined && (!producto.nombre || producto.nombre.trim() === '')) {
+                return res.status(400).json({ error: 'El nombre del producto no puede estar vacío' });
+            }
+
+            // Validar itemInventario si existe
+            if (producto.detalle && producto.detalle.venta && producto.detalle.venta.itemInventario) {
+                const { itemInventario } = producto.detalle.venta;
+                
+                if (itemInventario.nombre !== undefined && (!itemInventario.nombre || itemInventario.nombre.trim() === '')) {
+                    return res.status(400).json({ error: 'El nombre del itemInventario no puede estar vacío' });
+                }
+                
+                if (itemInventario.modelo !== undefined && (!itemInventario.modelo || itemInventario.modelo.trim() === '')) {
+                    return res.status(400).json({ error: 'El modelo del itemInventario no puede estar vacío' });
+                }
+                
+                if (itemInventario.serial !== undefined && (!itemInventario.serial || itemInventario.serial.trim() === '')) {
+                    return res.status(400).json({ error: 'El serial del itemInventario no puede estar vacío' });
+                }
+            }
+        }
+
+        // =================================================================
+        // **VALIDACIONES DE CLIENTE**
+        // =================================================================
+        if (datosActualizados.cliente) {
+            const { cliente } = datosActualizados;
+
+            // Validar campos obligatorios del cliente
+            const camposObligatorios = ['nombre', 'apellido', 'telefono','dni'];
+            const camposFaltantes = [];
+
+            camposObligatorios.forEach(campo => {
+                if (cliente[campo] !== undefined && (!cliente[campo] || cliente[campo].trim() === '')) {
+                    camposFaltantes.push(campo);
+                }
+            });
+
+            if (camposFaltantes.length > 0) {
+                return res.status(400).json({ 
+                    error: `Campos obligatorios del cliente faltantes: ${camposFaltantes.join(', ')}` 
+                });
+            }
+        }
+
+        // =================================================================
+        // **VALIDACIONES DE CUOTAS**
+        // =================================================================
+        if (datosActualizados.cuotas && Array.isArray(datosActualizados.cuotas)) {
+            const numerosCuota = new Set();
+            
+            for (const cuota of datosActualizados.cuotas) {
+                // Validar que no haya números de cuota duplicados
+                if (cuota.numeroCuota !== undefined) {
+                    if (numerosCuota.has(cuota.numeroCuota)) {
+                        return res.status(400).json({ 
+                            error: `Número de cuota duplicado: ${cuota.numeroCuota}` 
+                        });
+                    }
+                    numerosCuota.add(cuota.numeroCuota);
+                }
+
+                // Validar estado_cuota si viene
+                if (cuota.estado_cuota && !['pago', 'pendiente', 'no pagado', 'impago'].includes(cuota.estado_cuota)) {
+                    return res.status(400).json({ 
+                        error: `Estado de cuota inválido: ${cuota.estado_cuota}` 
+                    });
+                }
+            }
+        }
+
+        // =================================================================
+        // **CONVERSIÓN DE FECHA** (igual que en procesarVenta2)
+        // =================================================================
+        if (datosActualizados.fechaRealizada) {
+            if (typeof datosActualizados.fechaRealizada === 'string') {
+                if (datosActualizados.fechaRealizada.includes('/')) {
+                    const [day, month, year] = datosActualizados.fechaRealizada.split('/');
+                    datosActualizados.fechaRealizada = new Date(`${year}-${month}-${day}`);
+                } else {
+                    datosActualizados.fechaRealizada = new Date(datosActualizados.fechaRealizada);
+                }
+            }
+        }
+
+        // =================================================================
+        // **FILTRADO DE CAMPOS PERMITIDOS**
+        // =================================================================
+        const camposPermitidos = [
+            'numeroContrato', 'fechaRealizada', 'metodoPago_monto_sus_vta',
+            'monto_suscripcion_vta_dir', 'metodoPago_2', 'monto_2', 'metodoPago_3',
+            'monto_3', 'vendedor', 'producto', 'cliente', 'conducta_o_instancia',
+            'estado', 'cuotas'
+        ];
+
+        const datosFiltrados = {};
+        camposPermitidos.forEach(campo => {
+            if (datosActualizados[campo] !== undefined) {
+                datosFiltrados[campo] = datosActualizados[campo];
+            }
+        });
+
+        // Remover campos protegidos
+        if (datosFiltrados.producto && datosFiltrados.producto.detalle) {
+            delete datosFiltrados.producto.detalle.venta?.banderas;
+            delete datosFiltrados.producto.detalle.venta?.cuotasPactadas;
+        }
+
+        // =================================================================
+        // **ACTUALIZACIÓN EN LA BASE DE DATOS**
+        // =================================================================
+        const ventaActualizada = await Venta.findByIdAndUpdate(
+            id,
+            datosFiltrados,
+            { new: true, runValidators: true }
+        );
+
+        if (!ventaActualizada) {
+            return res.status(404).json({ error: 'Venta no encontrada' });
+        }
+
+        res.json({
+            message: 'Venta actualizada exitosamente',
+            venta: ventaActualizada
+        });
+
+    } catch (error) {
+        console.error('Error al actualizar venta:', error);
+        
+        // Manejar errores de validación de Mongoose
+        if (error.name === 'ValidationError') {
+            const errors = Object.values(error.errors).map(err => err.message);
+            return res.status(400).json({ 
+                error: 'Error de validación', 
+                details: errors 
+            });
+        }
+        
+        // Manejar errores de duplicado
+        if (error.code === 11000) {
+            return res.status(400).json({ 
+                error: 'Error de duplicado', 
+                details: 'El número de contrato ya existe' 
+            });
+        }
+
+        res.status(400).json({ 
+            error: 'Error al actualizar venta', 
+            details: error.message 
+        });
+    }
+};
 
 //actualisa estado en stock
 // Actualiza el estado de un item dentro del inventario de un producto
@@ -865,6 +1468,9 @@ const cargarSistemaVentas = async (req, res) => {
 module.exports = {
   crearVentaCompleta,
   cargarPrestamos,
-  cargarSistemaVentas
+  cargarSistemaVentas,
+  crearCliente2,
+  procesarVenta2,
+  actualizarVenta
 
 };
