@@ -3,7 +3,7 @@ const express = require('express');
 const { check } = require('express-validator');
 const { validarCampos } = require('../midelwares/validarCampos');
 const { validarJWTVentas } = require('../midelwares/ValidarSWTVentas');
-const { crearVentaCompleta, cargarPrestamos, cargarSistemaVentas, procesarVenta2, crearCliente2, actualizarVenta } = require('../controllers/RegVentas');
+const { crearVentaCompleta, cargarPrestamos, cargarSistemaVentas, procesarVenta2, crearCliente2, actualizarVenta,buscarClientePorDNI } = require('../controllers/RegVentas');
 
 
 const routerVentas = express.Router();
@@ -38,6 +38,8 @@ routerVentas.post('/new-clientes',
 routerVentas.put('/update-vta/:id', actualizarVenta);
   //procesar venta 2
 routerVentas.post('/ventas-procesar', validarJWTVentas, procesarVenta2);
+
+routerVentas.get('/buscar-cliente', validarJWTVentas, buscarClientePorDNI);
 
 routerVentas.get('/ventas-pres', validarJWTVentas, cargarPrestamos);
 
